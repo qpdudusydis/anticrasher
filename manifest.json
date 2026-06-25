@@ -1,0 +1,12 @@
+{
+    "id": "dev.dartik.antispamvaccine",
+    "name": "AntiSpamVaccine",
+    "description": "디스코드 크래셔/스팸 메시지를 렌더링 전에 즉시 차단. 반복 문자, 스포일러 크래셔, 잘고 텍스트, BiDi 크래셔 방어.",
+    "version": "1.0.0",
+    "main": "src/index.js",
+    "authors": [
+        {
+            "name": "Dartik"
+        }
+    ]
+}
