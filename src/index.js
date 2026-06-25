@@ -14,6 +14,8 @@
  * - Zero-width 문자 도배
  */
 
+return (function() {
+
 // 플러그인 로드 시점에 필요한 모듈 가져오기 (번들러 없이 단일 파일로 동작)
 const { findByProps } = window.revenge ? window.revenge.modules.finders : window.vendetta.metro;
 const { before } = window.revenge ? window.revenge.patcher : window.vendetta.patcher;
@@ -243,7 +245,7 @@ function sanitizeMessage(msg) {
    ═══════════════════════════════════════════════════════════ */
 const patches = [];
 
-export default {
+return {
     onLoad() {
         blockedCount = 0;
         initSettings();
@@ -329,3 +331,5 @@ export default {
         } catch (e) {}
     }
 };
+
+})();
