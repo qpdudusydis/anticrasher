@@ -14,10 +14,10 @@
  * - Zero-width 문자 도배
  */
 
-import { findByProps } from "@revenge-mod/modules/finders";
-import { before } from "@revenge-mod/patcher";
-import { showToast } from "@revenge-mod/ui/toasts";
-import { storage } from "@revenge-mod/storage";
+import { findByProps } from "@vendetta/metro";
+import { before } from "@vendetta/patcher";
+import { showToast } from "@vendetta/ui/toasts";
+import { storage } from "@vendetta/storage";
 
 /* ═══════════════════════════════════════════════════════════
    기본 설정
@@ -37,7 +37,6 @@ const DEFAULT_SETTINGS = {
    설정 관리
    ═══════════════════════════════════════════════════════════ */
 function getSettings() {
-    // storage가 없으면 기본값 사용
     if (!storage) return { ...DEFAULT_SETTINGS };
 
     const s = { ...DEFAULT_SETTINGS };
@@ -56,16 +55,12 @@ function initSettings() {
             storage[key] = val;
         }
     }
-    // v2.1 마이그레이션: 낮은 임계값 리셋
     if (storage.repeatLimit < 20) storage.repeatLimit = 100;
     if (storage.hardLimit < 500) storage.hardLimit = 2000;
 }
 
 /* ═══════════════════════════════════════════════════════════
    스팸/크래셔 감지 엔진
-   ─────────────────────────────────────────────────────────
-   BetterDiscord v2.2와 동일한 엔진
-   규칙: 정규식 절대 금지, for 루프만 사용
    ═══════════════════════════════════════════════════════════ */
 function detectSpam(content) {
     if (!content || typeof content !== "string") return null;
@@ -73,7 +68,6 @@ function detectSpam(content) {
     const s = getSettings();
     const len = content.length;
 
-    // ━━━ 1. 하드 리밋: 길이 초과 → 분석 없이 즉시 차단 ━━━
     if (len > s.hardLimit) {
         return {
             type: "길이초과",
@@ -81,9 +75,6 @@ function detectSpam(content) {
         };
     }
 
-    // ━━━ 아래부터는 hardLimit 이하만 도달 ━━━
-
-    // ━━━ 2. 연속 반복 문자 ━━━
     let maxRepeat = 0;
     let maxRepeatChar = "";
     let repeatCount = 1;
@@ -105,7 +96,6 @@ function detectSpam(content) {
         };
     }
 
-    // ━━━ 3. 스포일러 태그 크래셔: || 남용 ━━━
     if (s.blockSpoilerAbuse) {
         let spoilerCount = 0;
         for (let i = 0; i < len - 1; i++) {
@@ -122,7 +112,6 @@ function detectSpam(content) {
         }
     }
 
-    // ━━━ 4. 잘고 텍스트 (Combining Characters 도배) ━━━
     if (s.blockZalgo) {
         let combiningCount = 0;
         for (let i = 0; i < len; i++) {
@@ -145,7 +134,6 @@ function detectSpam(content) {
         }
     }
 
-    // ━━━ 5. BiDi 오버라이드 크래셔 ━━━
     if (s.blockBidi) {
         let bidiCount = 0;
         for (let i = 0; i < len; i++) {
@@ -167,7 +155,6 @@ function detectSpam(content) {
         }
     }
 
-    // ━━━ 6. 줄바꿈 도배 ━━━
     let nlCount = 0;
     for (let i = 0; i < len; i++) {
         if (content[i] === "\n") nlCount++;
@@ -179,7 +166,6 @@ function detectSpam(content) {
         };
     }
 
-    // ━━━ 7. Zero-width 문자 도배 ━━━
     let zwCount = 0;
     for (let i = 0; i < len; i++) {
         const code = content.charCodeAt(i);
@@ -200,7 +186,7 @@ function detectSpam(content) {
 }
 
 /* ═══════════════════════════════════════════════════════════
-   메시지 소독 — content를 안전한 텍스트로 교체
+   메시지 소독
    ═══════════════════════════════════════════════════════════ */
 let blockedCount = 0;
 
@@ -214,7 +200,6 @@ function sanitizeMessage(msg) {
     const origLen = msg.content.length;
     const safePreview = msg.content.substring(0, 60).replace(/\n/g, "↵");
 
-    // 메시지 내용 교체 — React Native가 이 짧은 텍스트만 렌더링
     msg.content =
         `🛡️ **[스팸 차단]** ${result.type}\n` +
         `> ${result.detail}\n` +
@@ -230,9 +215,7 @@ function sanitizeMessage(msg) {
                 `🛡️ ${result.type} 차단 (${origLen.toLocaleString()}자)`,
                 "warning"
             );
-        } catch (e) {
-            // 토스트 실패해도 차단은 성공
-        }
+        } catch (e) {}
     }
 }
 
@@ -246,10 +229,7 @@ export default {
         blockedCount = 0;
         initSettings();
 
-        // ── FluxDispatcher 찾기 ──
-        // Revenge의 모듈 파인더로 Discord 내부 Dispatcher 탐색
         let Dispatcher = null;
-
         try {
             Dispatcher =
                 findByProps("dispatch", "subscribe", "wait") ??
@@ -260,36 +240,19 @@ export default {
         }
 
         if (!Dispatcher) {
-            console.warn("[ASV] FluxDispatcher를 찾을 수 없음 — 플러그인 비활성");
-            try {
-                showToast?.("🛡️ ASV: Dispatcher 못 찾음 — 업데이트 필요", "error");
-            } catch (e) {}
+            console.warn("[ASV] FluxDispatcher를 찾을 수 없음");
             return;
         }
 
-        // ── Dispatcher.dispatch 패치 ──
-        // MESSAGE_CREATE / MESSAGE_UPDATE / LOAD_MESSAGES 가로채기
         const unpatch = before("dispatch", Dispatcher, ([event]) => {
             if (!event) return;
-
             try {
                 switch (event.type) {
                     case "MESSAGE_CREATE":
-                        if (event.message) sanitizeMessage(event.message);
-                        break;
-
                     case "MESSAGE_UPDATE":
                         if (event.message) sanitizeMessage(event.message);
                         break;
-
                     case "LOAD_MESSAGES_SUCCESS":
-                        if (event.messages) {
-                            for (let i = 0; i < event.messages.length; i++) {
-                                sanitizeMessage(event.messages[i]);
-                            }
-                        }
-                        break;
-
                     case "LOAD_MESSAGES_AROUND_SUCCESS":
                         if (event.messages) {
                             for (let i = 0; i < event.messages.length; i++) {
@@ -299,31 +262,19 @@ export default {
                         break;
                 }
             } catch (err) {
-                // 절대 Discord를 죽이면 안 됨
                 console.error("[ASV] dispatch 패치 오류:", err);
             }
         });
 
         patches.push(unpatch);
-
-        console.log("[ASV] AntiSpamVaccine 로드 완료 — Dispatcher 패치 성공");
-        try {
-            showToast?.("🛡️ AntiSpamVaccine 활성화", "success");
-        } catch (e) {}
+        console.log("[ASV] AntiSpamVaccine 로드 완료");
     },
 
     onUnload() {
-        // 모든 패치 해제
         for (const unpatch of patches) {
-            try {
-                unpatch?.();
-            } catch (e) {}
+            try { unpatch?.(); } catch (e) {}
         }
         patches.length = 0;
-
         console.log(`[ASV] 언로드 완료 (차단: ${blockedCount}건)`);
-        try {
-            showToast?.(`🛡️ ASV 비활성화 (차단: ${blockedCount}건)`, "info");
-        } catch (e) {}
     }
 };
